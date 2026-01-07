@@ -1,0 +1,51 @@
+# ===============================
+# Python cache
+# ===============================
+__pycache__/
+*.py[cod]
+
+# ===============================
+# Virtual environments
+# ===============================
+venv/
+.env
+.env/
+
+# ===============================
+# Jupyter / Colab
+# ===============================
+.ipynb_checkpoints/
+
+# ===============================
+# Logs
+# ===============================
+*.log
+
+# ===============================
+# TRAINED MODEL ARTIFACTS (DO NOT COMMIT)
+# ===============================
+
+# Root-level trained models
+codebert_vulnerability_logic_model_frozen_concrete/
+vulnerability_detector_production_frozen_concrete/
+
+# Models folder (trained outputs only)
+models/vulnerability_logic_model/
+models/vulnerability_logic_production/
+
+# Common ML weight formats (anywhere)
+*.pt
+*.pth
+*.ckpt
+*.bin
+
+# ===============================
+# OS files
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# VS Code
+# ===============================
+.vscode/
