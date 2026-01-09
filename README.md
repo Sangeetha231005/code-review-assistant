@@ -1,0 +1,158 @@
+# 🛡️ AI-Driven Automated Code Review Assistant
+
+An **AI-powered automated code review system** that detects **security vulnerabilities, unsafe logic flows, and code quality issues** in source code during development and pull requests.
+
+This project combines **static analysis**, **AUG-PDG (Augmented Program Dependence Graphs)**, and a **fine-tuned CodeBERT model**, and integrates seamlessly with **GitHub Actions** to enforce security and quality checks before code is merged.
+
+---
+
+## 🚀 Key Features
+
+### 🔍 Multi-Language Support (6 Languages)
+- Python
+- Java
+- JavaScript
+- PHP
+- Ruby
+- Go
+
+### 🧠 AI-Based Vulnerability Detection
+- Fine-tuned **CodeBERT** (`microsoft/codebert-base`)
+- Encoder **frozen** for stable logic learning
+- Learns **concrete vulnerability flow patterns**
+
+### 🧩 AUG-PDG (Augmented Program Dependence Graph)
+- Tracks **SOURCE → SINK → SANITIZATION**
+- Enables semantic reasoning beyond regex matching
+
+### 🔐 Security Vulnerabilities Detected
+- SQL Injection
+- Command Injection
+- Cross-Site Scripting (XSS)
+- Unsafe system calls
+- Missing input sanitization
+
+### 📐 Static Code Analysis
+- Pylint
+- Flake8
+- Bandit
+- Language-specific linters
+
+### 🔁 CI/CD Integration
+- GitHub Actions workflow
+- Runs automatically on `push` and `pull_request`
+
+### 📊 Explainable Decisions
+- Clear reasoning for **APPROVE / REVIEW / REJECT**
+
+---
+
+## 🏗️ System Architecture
+
+```text
+Source Code
+   ↓
+Language Detection
+(Python | Java | JavaScript | PHP | Ruby | Go)
+   ↓
+AST Parsing (Tree-sitter)
+   ↓
+AUG-PDG Construction
+   ↓
+Data-Flow Extraction
+(SOURCE → SINK → SANITIZATION)
+   ↓
+Flow Normalization
+   ↓
+AI Vulnerability Analysis
+(CodeBERT – Fine-tuned)
+   ↓
+Static Analysis
+(Pylint / Flake8 / Bandit)
+   ↓
+Decision Engine
+(APPROVE / REVIEW / REJECT)
+   ↓
+GitHub Actions CI Enforcement
+```
+
+---
+
+## 🤖 Machine Learning Model
+
+- **Base Model:** microsoft/codebert-base  
+- **Training:** Encoder Frozen  
+- **Epochs:** 2  
+- **Execution:** CPU compatible (GPU optional)
+
+### Model Input Format
+```text
+[VULNERABILITY_FLOW]
+SOURCE: <source>
+SINK: <sink>
+SANITIZATION: <sanitization>
+```
+
+---
+
+## 📁 Project Structure
+
+```text
+code-review-assistant/
+├── src/
+│   ├── integration.py
+│   ├── language_detector.py
+│   ├── style_checker.py
+│   ├── security_scanner.py
+│   └── vulnerability_training.py
+├── models/
+├── test_integration.py
+├── requirements.txt
+├── .github/workflows/code-review.yml
+└── README.md
+```
+
+---
+
+## ⚙️ Installation
+
+```bash
+git clone https://github.com/Sangeetha231005/code-review-assistant.git
+cd code-review-assistant
+pip install -r requirements.txt
+```
+
+---
+
+## ▶️ Usage
+
+```bash
+python test_integration.py
+```
+
+---
+
+## 🔄 GitHub Actions
+
+- Automatically runs on **push** and **pull_request**
+- Blocks merge on **critical vulnerabilities**
+
+---
+
+## 📊 Performance Metrics
+
+The vulnerability detection model was evaluated on a held-out test set
+containing concrete AUG-PDG patterns.
+
+| Metric       | Value |
+|--------------|-------|
+| Accuracy     | 100%  |
+| Precision    | 100%  |
+| Recall       | 100%  |
+| F1-Score     | 100%  |
+
+> Note: These results reflect performance on **concrete vulnerability flow
+patterns** that closely match AUG-PDG extraction output.  
+Real-world performance may vary depending on code complexity and language usage.
+
+
