@@ -1,0 +1,22 @@
+# Core ML & NLP
+torch
+transformers
+datasets
+scikit-learn
+numpy
+pandas
+
+# Code analysis & parsing
+tree-sitter==0.20.4
+tree-sitter-languages==1.10.2
+
+# Static analysis tools
+pylint
+flake8
+bandit
+
+# Utilities
+tqdm
+sentencepiece
+protobuf
+accelerate
