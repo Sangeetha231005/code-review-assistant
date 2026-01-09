@@ -100,16 +100,29 @@ SANITIZATION: <sanitization>
 ```text
 code-review-assistant/
 ├── src/
+│   ├── __init__.py
+│   ├── aug_pdg.py
+│   ├── input_processor.py
 │   ├── integration.py
 │   ├── language_detector.py
-│   ├── style_checker.py
+│   ├── linter_runner.py
 │   ├── security_scanner.py
+│   ├── style_checker.py
 │   └── vulnerability_training.py
+│
 ├── models/
+│   ├── vulnerability_logic_model/
+│   └── vulnerability_logic_production/
+│
 ├── test_integration.py
 ├── requirements.txt
-├── .github/workflows/code-review.yml
+├── .gitignore
+├── .github/
+│   └── workflows/
+│       └── code-review.yml
+│
 └── README.md
+
 ```
 
 ---
