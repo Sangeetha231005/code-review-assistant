@@ -1,6 +1,7 @@
 """
 Test script for the complete integration pipeline
 """
+print("🚀 LIVE DEMO: AUTOMATED CODE REVIEW PIPELINE")
 import os
 import sys
 import tempfile
