@@ -26,9 +26,8 @@ jobs:
           pip install tree-sitter==0.20.4
           pip install tree-sitter-languages==1.10.2
 
-      - name: 🧪 Run integration tests
+      - name: 🧪 Run integration tests (CI Enforcement)
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
-          python test_integration.py
-
+          python test_integration.py --ci
