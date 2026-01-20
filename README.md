@@ -167,5 +167,10 @@ containing concrete AUG-PDG patterns.
 > Note: These results reflect performance on **concrete vulnerability flow
 patterns** that closely match AUG-PDG extraction output.  
 Real-world performance may vary depending on code complexity and language usage.
+<img width="1920" height="1080" alt="vul" src="https://github.com/user-attachments/assets/b4afa45b-ace9-433e-a757-d2b72d09c68c" />
 
+<img width="1920" height="1080" alt="aug" src="https://github.com/user-attachments/assets/28cd31cb-ecc2-4ac9-a62e-59e2ac09ab8d" />
+
+<img width="1920" height="1080" alt="pr" src="https://github.com/user-attachments/assets/1b8cb6ab-723d-4e3a-9151-9d097985371a" />
+<img width="1920" height="1080" alt="acc" src="https://github.com/user-attachments/assets/8c157fa8-1163-4c1f-8d05-c8349544fedd" />
 
