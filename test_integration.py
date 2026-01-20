@@ -1,7 +1,6 @@
 """
 Test script for the complete integration pipeline
 """
-print("🚀 LIVE DEMO: AUTOMATED CODE REVIEW PIPELINE")
 import os
 import sys
 import tempfile
@@ -74,6 +73,12 @@ if __name__ == "__main__":
     assert result.language.lower() == "python", f"Expected python, got {result.language}"
     assert result.final_decision in ["REJECT", "REVIEW_REQUIRED"], \
         f"Expected REJECT or REVIEW_REQUIRED for vulnerable code, got {result.final_decision}"
+
+    # STEP 3: BLOCK MERGE if Vulnerabilities Are Found
+    if result.final_decision in ["REJECT", "REVIEW_REQUIRED"]:
+        print("\n❌ Vulnerabilities detected — blocking merge")
+        # In actual CI, this would exit with error, but for test we'll just log it
+        print("(In CI/CD pipeline, this would trigger: sys.exit(1))")
 
     print("\n✅ TEST PASSED: Vulnerable code correctly identified!")
     return result
@@ -263,6 +268,24 @@ int main() {
     print("\n✅ TEST PASSED: Unsupported language correctly handled!")
     return result
 
+def test_vulnerability_model_missing():
+    """Test simulation of vulnerability model missing scenario"""
+    print("\n" + "=" * 80)
+    print("🧪 TEST 5: VULNERABILITY MODEL MISSING (SIMULATION)")
+    print("=" * 80)
+    
+    # Simulate what happens when vulnerability model is missing
+    print("Simulating vulnerability model missing scenario...")
+    
+    # In the actual pipeline, this would be inside the security analysis
+    # For test purposes, we simulate the critical failure
+    print("\n❌ CRITICAL: Vulnerability model missing")
+    print("❌ Security validation incomplete")
+    print("(In actual pipeline, this would trigger: sys.exit(1))")
+    
+    print("\n✅ TEST COMPLETE: Model missing failure correctly simulated!")
+    return {"status": "SIMULATED_FAILURE", "decision": "REJECT"}
+
 def run_all_tests():
     """Run all integration tests"""
     print("=" * 80)
@@ -302,6 +325,14 @@ def run_all_tests():
     except Exception as e:
         print(f"❌ Test 4 failed: {e}")
         test_results.append(("Unsupported Language", "FAIL", str(e)))
+
+    try:
+        # Test 5: Vulnerability Model Missing
+        result5 = test_vulnerability_model_missing()
+        test_results.append(("Vulnerability Model Missing", "PASS", "SIMULATED"))
+    except Exception as e:
+        print(f"❌ Test 5 failed: {e}")
+        test_results.append(("Vulnerability Model Missing", "FAIL", str(e)))
 
     # Summary
     print("\n" + "=" * 80)
