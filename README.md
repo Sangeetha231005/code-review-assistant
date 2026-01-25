@@ -56,25 +56,32 @@ Source Code
 Language Detection
 (Python | Java | JavaScript | PHP | Ruby | Go)
    ↓
-AST Parsing (Tree-sitter)
+Style & Code Quality Analysis
+(Formatting • Readability • Standards)
+   ↓
+Rule-Based Security Scanning
+(Known Vulnerability Patterns)
+   ↓
+AST Parsing
+(Tree-sitter)
    ↓
 AUG-PDG Construction
+(Control • Data • Call Dependencies)
    ↓
-Data-Flow Extraction
+Taint-Aware Data-Flow Extraction
 (SOURCE → SINK → SANITIZATION)
    ↓
 Flow Normalization
+(Standardized Vulnerability Logic)
    ↓
 AI Vulnerability Analysis
-(CodeBERT – Fine-tuned)
-   ↓
-Static Analysis
-(Pylint / Flake8 / Bandit)
+(Fine-Tuned CodeBERT)
    ↓
 Decision Engine
-(APPROVE / REVIEW / REJECT)
+(APPROVE • REVIEW RECOMMENDED • REVIEW REQUIRED • REJECT)
    ↓
 GitHub Actions CI Enforcement
+
 ```
 
 ---
