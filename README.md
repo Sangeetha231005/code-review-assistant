@@ -48,6 +48,7 @@ This project combines **static analysis**, **AUG-PDG (Augmented Program Dependen
 ---
 
 ## 🏗️ System Architecture
+<img width="1688" height="811" alt="image" src="https://github.com/user-attachments/assets/b35daed9-a915-4257-a280-fc46d7f27820" />
 
 ```text
 Source Code
