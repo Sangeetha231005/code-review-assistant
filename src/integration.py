@@ -1,5 +1,9 @@
 """
 COMPLETE INTEGRATION PIPELINE - FINAL VERSION WITH VULNERABILITY MODEL
+✅ FIXED: No resize_token_embeddings() - never modifies model weights
+✅ FIXED: No Hugging Face downloads - only loads from local models/
+✅ FIXED: Explicit model status tracking
+✅ FIXED: Fail-fast if model is missing
 """
 
 import os
@@ -15,7 +19,7 @@ from transformers import RobertaTokenizer, RobertaForSequenceClassification
 
 # ================== FIXED PATH CONFIGURATION ==================
 # ✅ REQUIRED FIX: Use relative paths based on current file location
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, project_root)
 sys.path.insert(0, os.path.join(project_root, "src"))
 
@@ -67,126 +71,133 @@ except ImportError as e:
 
 # ================== VULNERABILITY MODEL LOADER ==================
 
+class ModelLoadError(Exception):
+    """Exception raised when model fails to load."""
+    pass
+
 class VulnerabilityModelLoader:
     """
     Loads vulnerability detection model
-    Priority:
-    1. Hugging Face Hub (with safetensors)
-    2. Local downloaded model (with safetensors)
+    ✅ RULE 1: Only loads from local models/ directory
+    ✅ RULE 2: NEVER downloads from Hugging Face
+    ✅ RULE 3: NEVER calls resize_token_embeddings()
+    ✅ RULE 4: Explicit status tracking
+    ✅ RULE 5: Fail-fast if model missing
     """
-
-    HF_MODEL_ID = "Sangeetha23/codebert-vuln-logic"
-    LOCAL_MODEL_PATH = "models/vulnerability_logic_production"
+    
+    LOCAL_MODEL_PATH = os.path.join(project_root, "models", "vulnerability_logic_production")
 
     def __init__(self):
         self.model = None
         self.tokenizer = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.status = "UNINITIALIZED"
         self.load_model()
 
     def load_model(self):
+        """
+        Load model ONLY from local directory
+        Raises ModelLoadError if model cannot be loaded
+        """
         # -------------------------------
-        # 1️⃣ Try Hugging Face first
+        # ✅ FIXED: Only check local model path
         # -------------------------------
-        try:
-            print(f"🌐 Loading vulnerability model from Hugging Face: {self.HF_MODEL_ID}")
-
-            self.tokenizer = RobertaTokenizer.from_pretrained(self.HF_MODEL_ID)
-            self.model = RobertaForSequenceClassification.from_pretrained(
-                self.HF_MODEL_ID,
-                use_safetensors=True,  # ✅ CRITICAL: Enable safetensors
-                ignore_mismatched_sizes=True
+        print(f"📦 Loading vulnerability model from LOCAL path: {self.LOCAL_MODEL_PATH}")
+        
+        # Check if local model directory exists
+        if not os.path.exists(self.LOCAL_MODEL_PATH):
+            self.status = "MODEL_MISSING"
+            raise ModelLoadError(
+                f"Model directory not found: {self.LOCAL_MODEL_PATH}\n"
+                "Please run: python scripts/download_model.py"
             )
-
-            self.model.resize_token_embeddings(len(self.tokenizer))
+        
+        # Check for required files
+        config_path = os.path.join(self.LOCAL_MODEL_PATH, "config.json")
+        if not os.path.exists(config_path):
+            self.status = "INCOMPLETE_MODEL"
+            raise ModelLoadError(
+                f"Model config not found: {config_path}\n"
+                "Model download may be incomplete."
+            )
+        
+        # Check for model weights
+        safetensors_path = os.path.join(self.LOCAL_MODEL_PATH, "model.safetensors")
+        pytorch_path = os.path.join(self.LOCAL_MODEL_PATH, "pytorch_model.bin")
+        
+        if not os.path.exists(safetensors_path) and not os.path.exists(pytorch_path):
+            self.status = "NO_MODEL_WEIGHTS"
+            raise ModelLoadError(
+                f"No model weights found in: {self.LOCAL_MODEL_PATH}\n"
+                "Expected either model.safetensors or pytorch_model.bin"
+            )
+        
+        try:
+            # -------------------------------
+            # ✅ FIXED: Load tokenizer from local path
+            # -------------------------------
+            print(f"   Loading tokenizer...")
+            self.tokenizer = RobertaTokenizer.from_pretrained(self.LOCAL_MODEL_PATH)
+            
+            # -------------------------------
+            # ✅ FIXED: Load model from local path
+            # -------------------------------
+            print(f"   Loading model weights...")
+            
+            # Try safetensors first, then pytorch
+            if os.path.exists(safetensors_path):
+                print(f"   Using safetensors format")
+                self.model = RobertaForSequenceClassification.from_pretrained(
+                    self.LOCAL_MODEL_PATH,
+                    use_safetensors=True
+                    # ✅ FIXED: NO ignore_mismatched_sizes (should match training)
+                    # ✅ FIXED: NO resize_token_embeddings (preserve trained weights)
+                )
+            else:
+                print(f"   Using pytorch format")
+                self.model = RobertaForSequenceClassification.from_pretrained(
+                    self.LOCAL_MODEL_PATH
+                    # ✅ FIXED: NO ignore_mismatched_sizes
+                    # ✅ FIXED: NO resize_token_embeddings
+                )
+            
+            # Move to device
             self.model.to(self.device)
             self.model.eval()
-
-            print(f"✅ Vulnerability model loaded from Hugging Face on {self.device}")
-            return
-
-        except Exception as hf_error:
-            print(f"⚠️ Hugging Face load failed: {hf_error}")
-            print(f"⚠️ Trying without safetensors as fallback...")
             
-            # Fallback: Try without safetensors flag
-            try:
-                self.tokenizer = RobertaTokenizer.from_pretrained(self.HF_MODEL_ID)
-                self.model = RobertaForSequenceClassification.from_pretrained(
-                    self.HF_MODEL_ID,
-                    ignore_mismatched_sizes=True
+            # Verify tokenizer and model are compatible
+            vocab_size = len(self.tokenizer)
+            embedding_size = self.model.config.vocab_size
+            
+            if vocab_size != embedding_size:
+                self.status = "VOCAB_MISMATCH"
+                raise ModelLoadError(
+                    f"Tokenizer vocab size ({vocab_size}) doesn't match model vocab size ({embedding_size})\n"
+                    "This model was not trained with this tokenizer version."
                 )
-                self.model.resize_token_embeddings(len(self.tokenizer))
-                self.model.to(self.device)
-                self.model.eval()
-                print(f"✅ Vulnerability model loaded (fallback) on {self.device}")
-                return
-            except Exception as fallback_error:
-                print(f"⚠️ Fallback also failed: {fallback_error}")
-
-        # -------------------------------
-        # 2️⃣ Fallback to local model
-        # -------------------------------
-        local_path = os.path.join(project_root, self.LOCAL_MODEL_PATH)
-        if os.path.exists(local_path):
-            try:
-                print(f"📦 Loading vulnerability model from local path: {local_path}")
-
-                self.tokenizer = RobertaTokenizer.from_pretrained(local_path)
-                
-                # Check if safetensors file exists
-                safetensors_path = os.path.join(local_path, "model.safetensors")
-                pytorch_path = os.path.join(local_path, "pytorch_model.bin")
-                
-                if os.path.exists(safetensors_path):
-                    print("📁 Found model.safetensors file, loading with safetensors=True")
-                    self.model = RobertaForSequenceClassification.from_pretrained(
-                        local_path,
-                        use_safetensors=True,  # ✅ Enable safetensors
-                        ignore_mismatched_sizes=True
-                    )
-                elif os.path.exists(pytorch_path):
-                    print("📁 Found pytorch_model.bin file, loading without safetensors")
-                    self.model = RobertaForSequenceClassification.from_pretrained(
-                        local_path,
-                        ignore_mismatched_sizes=True
-                    )
-                else:
-                    print("⚠️ No model files found in local directory")
-                    raise FileNotFoundError("No model files found")
-
-                self.model.resize_token_embeddings(len(self.tokenizer))
-                self.model.to(self.device)
-                self.model.eval()
-
-                print(f"✅ Vulnerability model loaded locally on {self.device}")
-                return
-
-            except Exception as local_error:
-                print(f"❌ Local model load failed: {local_error}")
-
-        # -------------------------------
-        # 3️⃣ Model unavailable - use dummy model
-        # -------------------------------
-        print("⚠️ Vulnerability model NOT available, using dummy model")
-        self.model = None
-        self.tokenizer = None
+            
+            self.status = "MODEL_LOADED"
+            print(f"✅ Vulnerability model loaded successfully on {self.device}")
+            print(f"   Status: {self.status}")
+            print(f"   Vocab size: {vocab_size}")
+            
+        except Exception as e:
+            self.status = "LOAD_FAILED"
+            raise ModelLoadError(
+                f"Failed to load model from {self.LOCAL_MODEL_PATH}: {str(e)}"
+            ) from e
 
     def predict_vulnerability(self, source, sink, sanitization):
         """
         Predict if a code pattern is vulnerable
         Uses the trained CodeBERT model
         """
-        if not self.model or not self.tokenizer:
-            # Return dummy prediction if model not loaded
-            return {
-                "is_vulnerable": False,
-                "predicted_class": 0,
-                "confidence": 0.0,
-                "vulnerability_score": 0.0,
-                "safe_score": 1.0,
-                "note": "Using dummy model - real model not loaded"
-            }
+        # Check model status
+        if self.status != "MODEL_LOADED" or not self.model or not self.tokenizer:
+            raise RuntimeError(
+                f"Cannot make predictions: model status is '{self.status}'\n"
+                "Model must be successfully loaded before making predictions."
+            )
 
         # Format input as trained
         input_text = f"""[VULNERABILITY_FLOW]
@@ -217,7 +228,19 @@ SANITIZATION: {sanitization}"""
             "predicted_class": predicted_class,
             "confidence": confidence,
             "vulnerability_score": probabilities[0][1].item(),
-            "safe_score": probabilities[0][0].item()
+            "safe_score": probabilities[0][0].item(),
+            "model_status": self.status,
+            "device": str(self.device)
+        }
+    
+    def get_status(self):
+        """Get current model status."""
+        return {
+            "status": self.status,
+            "model_loaded": self.model is not None,
+            "tokenizer_loaded": self.tokenizer is not None,
+            "device": str(self.device),
+            "model_path": self.LOCAL_MODEL_PATH
         }
 
 # ================== PIPELINE CLASSES ==================
@@ -286,17 +309,32 @@ class CodeReviewPipeline:
 
     def __init__(self):
         self.components = COMPONENTS
-        self.vulnerability_model = VulnerabilityModelLoader()
         self.supported_languages = ["python", "java", "javascript", "php", "ruby", "go"]
         
         # Confidence threshold for language detection
         self.language_confidence_threshold = 0.7  # 70%
+        
+        # Initialize vulnerability model (may raise ModelLoadError)
+        print(f"\n🤖 Initializing vulnerability model...")
+        try:
+            self.vulnerability_model = VulnerabilityModelLoader()
+            model_status = self.vulnerability_model.get_status()
+            print(f"   Model status: {model_status['status']}")
+        except ModelLoadError as e:
+            print(f"❌ CRITICAL: Vulnerability model failed to load")
+            print(f"   Error: {e}")
+            print(f"   Please ensure model is downloaded: python scripts/download_model.py")
+            raise  # Re-raise to fail-fast
 
         print(f"\n📋 Available Components:")
         for name, component in self.components.items():
             status = "✅" if component is not None else "❌"
             print(f"  {status} {name}")
-        print(f"  {'✅' if self.vulnerability_model.model else '⚠️'} vulnerability_model")
+        
+        # Show model status
+        model_status = self.vulnerability_model.get_status()
+        status_symbol = "✅" if model_status['status'] == "MODEL_LOADED" else "❌"
+        print(f"  {status_symbol} vulnerability_model [{model_status['status']}]")
 
     def process_file(self, filepath: str) -> PipelineResult:
         """
@@ -353,10 +391,9 @@ class CodeReviewPipeline:
                 print(f"   → Detected: {language or 'unknown'} (confidence: {confidence:.1%})")
                 print(f"   → Supported: {'✅ Yes' if language_supported else '❌ No'}")
 
-                # 🚨 CRITICAL FIX: Check confidence threshold AND UPDATE STORED DATA
+                # Check confidence threshold
                 if confidence < self.language_confidence_threshold:
                     print(f"   ⚠️  Low confidence detection (<{self.language_confidence_threshold:.0%})")
-                    # FIX: Update the stored component result, not just local variable
                     component_results['language_detection'].data["supported"] = False
 
             except Exception as e:
@@ -625,7 +662,8 @@ class CodeReviewPipeline:
                 data={
                     "predictions": predictions,
                     "total_predictions": len(predictions),
-                    "vulnerable_count": sum(1 for p in predictions if p.get('is_vulnerable', False))
+                    "vulnerable_count": sum(1 for p in predictions if p.get('is_vulnerable', False)),
+                    "model_status": self.vulnerability_model.get_status()
                 },
                 processing_time=time.time() - vulnerability_time
             )
@@ -642,7 +680,11 @@ class CodeReviewPipeline:
             component_results['vulnerability_prediction'] = ComponentResult(
                 name="vulnerability_model",
                 status=PipelineStatus.ERROR,
-                data={"predictions": [], "error": str(e)},
+                data={
+                    "predictions": [], 
+                    "error": str(e),
+                    "model_status": self.vulnerability_model.get_status()
+                },
                 error=str(e),
                 processing_time=time.time() - vulnerability_time
             )
@@ -708,6 +750,7 @@ class CodeReviewPipeline:
         print(f"⚖️  Final Decision: {final_decision}")
         print(f"⏱️  Total Time: {total_time:.2f}s")
         print(f"💡 Recommendations: {len(recommendations)}")
+        print(f"🤖 Model Status: {self.vulnerability_model.get_status()['status']}")
         print(f"{'='*70}")
 
         return result
@@ -749,6 +792,10 @@ class CodeReviewPipeline:
 
         return "unknown"
 
+    def get_model_status(self):
+        """Get vulnerability model status."""
+        return self.vulnerability_model.get_status()
+
 # ================== MAIN EXECUTION ==================
 
 def main():
@@ -761,8 +808,21 @@ def main():
     print("          AUG-PDG → Vulnerability Model → Final Decision")
     print("=" * 80)
 
-    # Initialize pipeline
-    pipeline = CodeReviewPipeline()
+    try:
+        # Initialize pipeline (will raise ModelLoadError if model missing)
+        pipeline = CodeReviewPipeline()
+        
+        # Show model status
+        model_status = pipeline.get_model_status()
+        print(f"\n🤖 Model Status: {model_status['status']}")
+        print(f"📁 Model Path: {model_status['model_path']}")
+        print(f"⚡ Device: {model_status['device']}")
+        
+    except ModelLoadError as e:
+        print(f"\n❌ CRITICAL ERROR: {e}")
+        print(f"\n💡 SOLUTION: Run this command first:")
+        print(f"   python scripts/download_model.py")
+        return 1
 
     # Ask for file path
     file_path = input("\n📂 Enter path to code file: ").strip()
@@ -840,6 +900,7 @@ if __name__ == "__main__":
         if result.vulnerability_prediction:
             vuln_data = result.vulnerability_prediction.data
             print(f"\n🤖 VULNERABILITY MODEL:")
+            print(f"  Status: {vuln_data.get('model_status', {}).get('status', 'UNKNOWN')}")
             print(f"  Predictions: {vuln_data.get('total_predictions', 0)}")
             print(f"  Vulnerable: {vuln_data.get('vulnerable_count', 0)}")
             
@@ -875,6 +936,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Error processing file: {e}")
         traceback.print_exc()
+        return 1
+    
+    return 0
 
 if __name__ == "__main__":
-    main()
+    exit_code = main()
+    exit(exit_code)
