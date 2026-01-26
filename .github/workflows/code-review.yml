@@ -1,8 +1,6 @@
 name: Automated Code Review Pipeline
 
 on:
-  push:
-    branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
 
@@ -11,75 +9,75 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------
-      # 1️⃣ Checkout repository
-      # --------------------------------------------------
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    # --------------------------------------------------
+    # 1️⃣ Checkout PR code
+    # --------------------------------------------------
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      # --------------------------------------------------
-      # 2️⃣ Setup Python
-      # --------------------------------------------------
-      - name: 🐍 Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.9"
+    # --------------------------------------------------
+    # 2️⃣ Setup Python
+    # --------------------------------------------------
+    - name: 🐍 Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.9"
 
-      # --------------------------------------------------
-      # 3️⃣ Install dependencies
-      # --------------------------------------------------
-      - name: 📦 Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install torch transformers datasets scikit-learn
-          pip install pylint flake8 bandit
-          pip install tree-sitter==0.20.4
-          pip install tree-sitter-languages==1.10.2
-          pip install huggingface_hub safetensors
+    # --------------------------------------------------
+    # 3️⃣ Install dependencies
+    # --------------------------------------------------
+    - name: 📦 Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch transformers datasets scikit-learn
+        pip install pylint flake8 bandit
+        pip install tree-sitter==0.20.4 tree-sitter-languages==1.10.2
+        pip install huggingface_hub safetensors
 
-      # --------------------------------------------------
-      # 4️⃣ Hugging Face Login (ONLY WHEN SAFE)
-      #     - Push to main/master ✅
-      #     - PR from same repo ✅
-      #     - Forked PR ❌ (skipped automatically)
-      # --------------------------------------------------
-      - name: 🔐 Login to Hugging Face
-        if: >
-          github.event_name == 'push' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.head.repo.full_name == github.repository)
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          python - <<'EOF'
-          import os
-          from huggingface_hub import login
+    # --------------------------------------------------
+    # 4️⃣ Hugging Face login (safe - only for same repo)
+    # --------------------------------------------------
+    - name: 🔐 Login to Hugging Face
+      if: github.event.pull_request.head.repo.full_name == github.repository
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python - <<'EOF'
+        import os
+        from huggingface_hub import login
+        token = os.environ.get("HF_TOKEN")
+        if token:
+            login(token=token)
+            print("✅ Hugging Face login successful")
+        else:
+            print("⚠️ No HF_TOKEN available, will use public access")
+        EOF
 
-          token = os.environ.get("HF_TOKEN")
-          if not token:
-              raise RuntimeError("HF_TOKEN missing in trusted CI")
+    # --------------------------------------------------
+    # 5️⃣ Download model ONCE (shared)
+    # --------------------------------------------------
+    - name: ⬇️ Download vulnerability model
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      run: |
+        python scripts/download_model.py
 
-          login(token=token)
-          print("✅ Hugging Face login successful")
-          EOF
+    # --------------------------------------------------
+    # 6️⃣ Run INTEGRATION TESTS FIRST
+    # --------------------------------------------------
+    - name: 🧪 Run integration tests
+      env:
+        PYTHONPATH: ${{ github.workspace }}/src
+      run: |
+        python test_integration.py --ci
 
-      # --------------------------------------------------
-      # 5️⃣ Run integration tests
-      # --------------------------------------------------
-      - name: 🧪 Run integration tests
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src
-        run: |
-          python test_integration.py --ci
-
-      # --------------------------------------------------
-      # 6️⃣ Analyze Pull Request code
-      # --------------------------------------------------
-      - name: 🔍 Analyze Pull Request Code
-        if: github.event_name == 'pull_request'
-        env:
-          PYTHONPATH: ${{ github.workspace }}/src
-        run: |
-          python src/pr_analyze.py
+    # --------------------------------------------------
+    # 7️⃣ Analyze PR CODE (REAL DECISION)
+    # --------------------------------------------------
+    - name: 🔍 Analyze Pull Request code
+      env:
+        PYTHONPATH: ${{ github.workspace }}/src
+      run: |
+        python src/pr_analyze.py
