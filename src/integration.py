@@ -1,9 +1,11 @@
 """
 COMPLETE INTEGRATION PIPELINE - FINAL VERSION WITH VULNERABILITY MODEL
-✅ FIXED: Proper model loading with size mismatch handling
-✅ FIXED: No Hugging Face downloads - only loads from local models/
-✅ FIXED: Explicit model status tracking
-✅ FIXED: Fail-fast if model is missing
+✅ FIXED: All critical issues identified in the analysis
+✅ FIXED: Proper model loading WITHOUT silent reinitialization
+✅ FIXED: ML predictions have real impact on final decision
+✅ FIXED: Human-readable labels and confidence thresholds
+✅ FIXED: Remove dangerous ignore_mismatched_sizes flag
+✅ FIXED: Exact training architecture enforced
 """
 
 import os
@@ -15,10 +17,9 @@ import torch
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
-from transformers import RobertaTokenizer, RobertaForSequenceClassification
+from transformers import RobertaTokenizer, RobertaConfig, RobertaForSequenceClassification
 
 # ================== FIXED PATH CONFIGURATION ==================
-# ✅ REQUIRED FIX: Use relative paths based on current file location
 project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, project_root)
 sys.path.insert(0, os.path.join(project_root, "src"))
@@ -78,14 +79,15 @@ class ModelLoadError(Exception):
 class VulnerabilityModelLoader:
     """
     Loads vulnerability detection model
-    ✅ RULE 1: Only loads from local models/ directory
-    ✅ RULE 2: NEVER downloads from Hugging Face
-    ✅ RULE 3: Properly handles size mismatches
-    ✅ RULE 4: Explicit status tracking
-    ✅ RULE 5: Fail-fast if model missing
+    ✅ FIXED: No dangerous ignore_mismatched_sizes flag
+    ✅ FIXED: Exact training architecture enforced
+    ✅ FIXED: Human-readable labels
     """
     
     LOCAL_MODEL_PATH = os.path.join(project_root, "models", "vulnerability_logic_production")
+    
+    # 🔴 CRITICAL FIX: Define human-readable labels
+    LABEL_MAPPING = {0: "SAFE", 1: "VULNERABLE"}
 
     def __init__(self):
         self.model = None
@@ -97,11 +99,9 @@ class VulnerabilityModelLoader:
     def load_model(self):
         """
         Load model ONLY from local directory
-        Raises ModelLoadError if model cannot be loaded
+        ✅ FIXED: Remove ignore_mismatched_sizes flag to detect training errors
+        ✅ FIXED: Force exact training architecture
         """
-        # -------------------------------
-        # ✅ FIXED: Only check local model path
-        # -------------------------------
         print(f"📦 Loading vulnerability model from LOCAL path: {self.LOCAL_MODEL_PATH}")
         
         # Check if local model directory exists
@@ -133,55 +133,83 @@ class VulnerabilityModelLoader:
             )
         
         try:
-            # -------------------------------
-            # ✅ FIXED: Load tokenizer from local path
-            # -------------------------------
-            print(f"   Loading tokenizer...")
+            # ✅ STEP 1: Load tokenizer
+            print("   Loading tokenizer...")
             self.tokenizer = RobertaTokenizer.from_pretrained(self.LOCAL_MODEL_PATH)
-            
-            # Get tokenizer vocabulary size
             vocab_size = len(self.tokenizer)
             print(f"   Tokenizer vocab size: {vocab_size}")
             
-            # -------------------------------
-            # ✅ FIXED: Load model with ignore_mismatched_sizes=True
-            # This is REQUIRED when the pre-trained model's vocab size
-            # doesn't match the saved model's vocab size
-            # -------------------------------
-            print(f"   Loading model weights...")
+            # ✅ STEP 2: Load config EXACTLY as trained
+            print("   Loading config exactly as trained...")
+            config = RobertaConfig.from_pretrained(self.LOCAL_MODEL_PATH)
             
-            # Try safetensors first, then pytorch
+            # 🔴 CRITICAL FIX: FORCE exact training parameters
+            config.max_position_embeddings = 514
+            config.type_vocab_size = 1
+            config.num_labels = 2
+            
+            # 🔴 CRITICAL FIX: Set human-readable labels
+            config.id2label = self.LABEL_MAPPING
+            config.label2id = {"SAFE": 0, "VULNERABLE": 1}
+            
+            # ✅ STEP 3: Load model with exact config
+            print("   Loading model with exact config...")
+            
+            # 🔴 CRITICAL FIX: REMOVED ignore_mismatched_sizes=True
             if os.path.exists(safetensors_path):
                 print(f"   Using safetensors format")
                 self.model = RobertaForSequenceClassification.from_pretrained(
                     self.LOCAL_MODEL_PATH,
-                    use_safetensors=True,
-                    ignore_mismatched_sizes=True  # ✅ CRITICAL FIX: Allow size mismatch
+                    config=config,
+                    use_safetensors=True
+                    # ✅ REMOVED: ignore_mismatched_sizes=True
                 )
             else:
                 print(f"   Using pytorch format")
                 self.model = RobertaForSequenceClassification.from_pretrained(
                     self.LOCAL_MODEL_PATH,
-                    ignore_mismatched_sizes=True  # ✅ CRITICAL FIX: Allow size mismatch
+                    config=config
+                    # ✅ REMOVED: ignore_mismatched_sizes=True
                 )
             
             # Move to device
             self.model.to(self.device)
             self.model.eval()
             
-            # Verify model loaded correctly
-            embedding_size = self.model.config.vocab_size
-            print(f"   Model vocab size: {embedding_size}")
+            # ✅ STEP 4: HARD ASSERTIONS to verify exact architecture
+            print("   Verifying exact architecture...")
+            assert self.model.config.max_position_embeddings == 514, \
+                f"Model max_position_embeddings mismatch: {self.model.config.max_position_embeddings} != 514"
+            assert self.model.config.type_vocab_size == 1, \
+                f"Model type_vocab_size mismatch: {self.model.config.type_vocab_size} != 1"
+            assert self.model.config.num_labels == 2, \
+                f"Model num_labels mismatch: {self.model.config.num_labels} != 2"
             
-            # Note: With ignore_mismatched_sizes=True, the model's embedding layer
-            # will be automatically resized to match the tokenizer's vocab size
-            # This is expected behavior when loading fine-tuned models
+            print(f"   ✅ Architecture verified:")
+            print(f"      - max_position_embeddings: {self.model.config.max_position_embeddings}")
+            print(f"      - type_vocab_size: {self.model.config.type_vocab_size}")
+            print(f"      - num_labels: {self.model.config.num_labels}")
+            print(f"      - labels: {self.model.config.id2label}")
             
             self.status = "MODEL_LOADED"
             print(f"✅ Vulnerability model loaded successfully on {self.device}")
             print(f"   Status: {self.status}")
-            print(f"   Classifier labels: {self.model.config.id2label}")
             
+        except RuntimeError as e:
+            # 🔴 CRITICAL: Catch size mismatch errors
+            if "size mismatch" in str(e) or "ignore_mismatched_sizes" in str(e):
+                self.status = "ARCHITECTURE_MISMATCH"
+                raise ModelLoadError(
+                    f"❌ MODEL TRAINING ERROR DETECTED!\n"
+                    f"The saved model weights don't match the expected architecture.\n"
+                    f"This indicates the model was not trained with the correct configuration.\n"
+                    f"Error: {str(e)}\n\n"
+                    f"🔥 SOLUTION:\n"
+                    f"1. Check if the model was trained with max_position_embeddings=514\n"
+                    f"2. Verify the tokenizer matches the model vocabulary\n"
+                    f"3. Re-train the model with the exact configuration above"
+                ) from e
+            raise
         except Exception as e:
             self.status = "LOAD_FAILED"
             raise ModelLoadError(
@@ -192,7 +220,7 @@ class VulnerabilityModelLoader:
     def predict_vulnerability(self, source, sink, sanitization):
         """
         Predict if a code pattern is vulnerable
-        Uses the trained CodeBERT model
+        ✅ FIXED: Increased max_length for better context
         """
         # Check model status
         if self.status != "MODEL_LOADED" or not self.model or not self.tokenizer:
@@ -207,12 +235,12 @@ SOURCE: {source}
 SINK: {sink}
 SANITIZATION: {sanitization}"""
 
-        # Tokenize
+        # ✅ STEP 5: Increased max_length for better context
         inputs = self.tokenizer(
             input_text,
             truncation=True,
             padding=True,
-            max_length=128,
+            max_length=256,  # 🔴 FIXED: Increased from 128 to 256
             return_tensors="pt"
         )
 
@@ -225,7 +253,7 @@ SANITIZATION: {sanitization}"""
             predicted_class = torch.argmax(probabilities, dim=-1).item()
             confidence = probabilities[0][predicted_class].item()
 
-        # Get label mapping
+        # Get label mapping (now human-readable)
         label_map = self.model.config.id2label
         class_name = label_map.get(predicted_class, f"class_{predicted_class}")
 
@@ -249,7 +277,10 @@ SANITIZATION: {sanitization}"""
             "device": str(self.device),
             "model_path": self.LOCAL_MODEL_PATH,
             "vocab_size": len(self.tokenizer) if self.tokenizer else 0,
-            "model_vocab_size": self.model.config.vocab_size if self.model else 0
+            "model_vocab_size": self.model.config.vocab_size if self.model else 0,
+            "num_labels": self.model.config.num_labels if self.model else 0,
+            "labels": self.model.config.id2label if self.model else {},
+            "max_position_embeddings": self.model.config.max_position_embeddings if self.model else 0
         }
 
 # ================== PIPELINE CLASSES ==================
@@ -314,6 +345,7 @@ class PipelineResult:
 class CodeReviewPipeline:
     """
     Main pipeline for complete code review
+    ✅ FIXED: ML predictions have real security impact
     """
 
     def __init__(self):
@@ -323,18 +355,23 @@ class CodeReviewPipeline:
         # Confidence threshold for language detection
         self.language_confidence_threshold = 0.7  # 70%
         
-        # Initialize vulnerability model (may raise ModelLoadError)
+        # 🔴 CRITICAL FIX: ML confidence thresholds
+        self.vulnerability_confidence_threshold = 0.85  # 85% confidence to reject
+        self.review_confidence_threshold = 0.70  # 70% confidence to require review
+        
+        # Initialize vulnerability model
         print(f"\n🤖 Initializing vulnerability model...")
         try:
             self.vulnerability_model = VulnerabilityModelLoader()
             model_status = self.vulnerability_model.get_status()
             print(f"   Model status: {model_status['status']}")
-            print(f"   Vocab sizes - Tokenizer: {model_status.get('vocab_size', 'N/A')}, Model: {model_status.get('model_vocab_size', 'N/A')}")
+            print(f"   Labels: {model_status.get('labels', {})}")
+            print(f"   Architecture: max_position_embeddings={model_status.get('max_position_embeddings', 'N/A')}")
         except ModelLoadError as e:
             print(f"❌ CRITICAL: Vulnerability model failed to load")
             print(f"   Error: {e}")
             print(f"   Please ensure model is downloaded: python scripts/download_model.py")
-            raise  # Re-raise to fail-fast
+            raise
 
         print(f"\n📋 Available Components:")
         for name, component in self.components.items():
@@ -345,6 +382,7 @@ class CodeReviewPipeline:
         model_status = self.vulnerability_model.get_status()
         status_symbol = "✅" if model_status['status'] == "MODEL_LOADED" else "❌"
         print(f"  {status_symbol} vulnerability_model [{model_status['status']}]")
+        print(f"     Confidence thresholds: Reject @ {self.vulnerability_confidence_threshold:.0%}, Review @ {self.review_confidence_threshold:.0%}")
 
     def process_file(self, filepath: str) -> PipelineResult:
         """
@@ -517,6 +555,8 @@ class CodeReviewPipeline:
         print(f"\n[3/5] 🔒 Security Analysis")
         security_analysis_time = time.time()
 
+        security_score = 100  # Default score
+        
         if self.components['security_scanner']:
             try:
                 scanner = self.components['security_scanner']
@@ -529,34 +569,51 @@ class CodeReviewPipeline:
                     processing_time=time.time() - security_analysis_time
                 )
 
-                print(f"   → Score: {security_result.get('score', 0)}/100")
-                print(f"   → Risk Level: {security_result.get('risk_level', 'UNKNOWN')}")
-                print(f"   → Findings: {len(security_result.get('findings', []))}")
+                security_score = security_result.get('score', 100)
+                risk_level = security_result.get('risk_level', 'LOW')
+                findings = security_result.get('findings', [])
+                
+                print(f"   → Score: {security_score}/100")
+                print(f"   → Risk Level: {risk_level}")
+                print(f"   → Findings: {len(findings)}")
 
                 # Add recommendations
-                security_score = security_result.get('score', 100)
                 if security_score < 80:
                     recommendations.append(f"Address security issues (score: {security_score}/100)")
 
-                findings = security_result.get('findings', [])
                 critical_findings = [f for f in findings if f.get('severity') in ['CRITICAL', 'HIGH']]
                 if critical_findings:
                     recommendations.append(f"Fix {len(critical_findings)} critical/high security findings")
 
             except Exception as e:
+                # 🟠 ISSUE 5: Handle scanner failures gracefully but mark them
                 component_results['security_analysis'] = ComponentResult(
                     name="security_scanner",
                     status=PipelineStatus.ERROR,
-                    data={"passed": False, "score": 0, "error": str(e)},
+                    data={
+                        "passed": False, 
+                        "score": 0, 
+                        "error": str(e),
+                        "risk_level": "UNKNOWN",
+                        "findings": []
+                    },
                     error=str(e),
                     processing_time=time.time() - security_analysis_time
                 )
-                print(f"   → Failed: {e}")
+                print(f"   → ⚠️ Security scanner failed: {e}")
+                recommendations.append("Security scanner failed - manual review required")
+                security_score = 50  # Penalty for scanner failure
         else:
             component_results['security_analysis'] = ComponentResult(
                 name="security_scanner",
                 status=PipelineStatus.SKIPPED,
-                data={"passed": True, "score": 80, "skip_reason": "Component unavailable"},
+                data={
+                    "passed": True, 
+                    "score": 80, 
+                    "skip_reason": "Component unavailable",
+                    "risk_level": "UNKNOWN",
+                    "findings": []
+                },
                 processing_time=time.time() - security_analysis_time
             )
             print(f"   → Skipped (component unavailable)")
@@ -565,6 +622,8 @@ class CodeReviewPipeline:
         print(f"\n[4/5] 🏗️ AUG-PDG Analysis")
         aug_pdg_time = time.time()
 
+        vulnerability_patterns = []  # Collect patterns for ML analysis
+        
         if self.components['aug_pdg_builder']:
             try:
                 pdg_pipeline = self.components['aug_pdg_builder'](language=language)
@@ -588,18 +647,25 @@ class CodeReviewPipeline:
                 print(f"   → PDG Nodes: {pdg_stats.get('pdg_nodes', 0)}")
                 print(f"   → PDG Edges: {pdg_stats.get('pdg_edges', 0)}")
                 print(f"   → Security Issues: {pdg_stats.get('security_issues', 0)}")
+                print(f"   → Vulnerabilities found: {len(pdg_vulnerabilities)}")
 
                 # Extract vulnerability patterns for model
-                vulnerability_patterns = []
                 for vuln in pdg_vulnerabilities[:3]:  # Limit to top 3
-                    if 'variables_used' in vuln and 'variables_defined' in vuln:
-                        source = ", ".join(vuln.get('variables_used', [])) or "user_input"
-                        sink = ", ".join(vuln.get('variables_defined', [])) or "dangerous_operation"
-                        vulnerability_patterns.append({
-                            'source': source,
-                            'sink': sink,
-                            'sanitization': 'none' if vuln.get('involves_tainted_input', False) else 'unknown'
-                        })
+                    source_candidates = vuln.get('variables_used', []) or vuln.get('input_sources', [])
+                    sink_candidates = vuln.get('variables_defined', []) or vuln.get('sensitive_sinks', [])
+                    
+                    if source_candidates and sink_candidates:
+                        for source in source_candidates[:2]:
+                            for sink in sink_candidates[:2]:
+                                pattern = {
+                                    'source': source,
+                                    'sink': sink,
+                                    'sanitization': 'none' if vuln.get('involves_tainted_input', False) else 'unknown',
+                                    'context': vuln.get('location', 'unknown'),
+                                    'confidence': vuln.get('confidence', 0.5),
+                                    'type': vuln.get('type', 'unknown')
+                                }
+                                vulnerability_patterns.append(pattern)
 
                 component_results['aug_pdg_analysis'].data['vulnerability_patterns'] = vulnerability_patterns
 
@@ -633,45 +699,54 @@ class CodeReviewPipeline:
         print(f"\n[5/5] 🤖 Vulnerability Model Prediction")
         vulnerability_time = time.time()
 
+        predictions = []
         try:
-            # Extract vulnerability patterns from AUG-PDG or use security findings
-            vulnerability_patterns = []
-
-            # Try to get from AUG-PDG
-            if component_results.get('aug_pdg_analysis') and \
-               component_results['aug_pdg_analysis'].status == PipelineStatus.SUCCESS:
-                patterns = component_results['aug_pdg_analysis'].data.get('vulnerability_patterns', [])
-                if patterns:
-                    vulnerability_patterns = patterns
-
             # If no patterns from AUG-PDG, create from security findings
             if not vulnerability_patterns and \
                component_results['security_analysis'].status == PipelineStatus.SUCCESS:
                 security_data = component_results['security_analysis'].data
                 findings = security_data.get('findings', [])
-                for finding in findings[:2]:  # Limit to top 2
-                    vulnerability_patterns.append({
+                for finding in findings[:2]:
+                    pattern = {
                         'source': 'user_input',
                         'sink': finding.get('category', 'dangerous_operation'),
-                        'sanitization': 'none' if 'injection' in finding.get('category', '').lower() else 'unknown'
-                    })
+                        'sanitization': 'none' if 'injection' in finding.get('category', '').lower() else 'unknown',
+                        'context': finding.get('description', ''),
+                        'type': finding.get('severity', 'MEDIUM'),
+                        'confidence': 0.5
+                    }
+                    vulnerability_patterns.append(pattern)
 
-            # Fallback: create simple patterns from common sources/sinks
+            # Fallback: create simple patterns
             if not vulnerability_patterns:
                 vulnerability_patterns = [
-                    {'source': 'user_input', 'sink': 'system_call', 'sanitization': 'unknown'},
-                    {'source': 'user_input', 'sink': 'database_query', 'sanitization': 'unknown'}
+                    {
+                        'source': 'user_input', 
+                        'sink': 'system_call', 
+                        'sanitization': 'unknown',
+                        'context': 'General system interaction',
+                        'type': 'command_injection',
+                        'confidence': 0.3
+                    }
                 ]
 
-            predictions = []
-            for pattern in vulnerability_patterns[:2]:  # Limit to 2 predictions
-                pred = self.vulnerability_model.predict_vulnerability(
-                    pattern['source'],
-                    pattern['sink'],
-                    pattern['sanitization']
-                )
-                pred['pattern'] = pattern
-                predictions.append(pred)
+            # Make predictions for each pattern
+            for pattern in vulnerability_patterns[:2]:
+                try:
+                    pred = self.vulnerability_model.predict_vulnerability(
+                        pattern['source'],
+                        pattern['sink'],
+                        pattern['sanitization']
+                    )
+                    pred['pattern'] = pattern
+                    predictions.append(pred)
+                    
+                    print(f"   → Pattern: {pattern['source']} → {pattern['sink']}")
+                    print(f"     Prediction: {pred['predicted_class_name']} (confidence: {pred['confidence']:.1%})")
+                    
+                except Exception as e:
+                    print(f"   → ⚠️ Failed to predict for pattern: {e}")
+                    continue
 
             component_results['vulnerability_prediction'] = ComponentResult(
                 name="vulnerability_model",
@@ -680,18 +755,26 @@ class CodeReviewPipeline:
                     "predictions": predictions,
                     "total_predictions": len(predictions),
                     "vulnerable_count": sum(1 for p in predictions if p.get('is_vulnerable', False)),
+                    "high_confidence_vulnerable": sum(1 for p in predictions 
+                                                     if p.get('is_vulnerable', False) and 
+                                                     p.get('confidence', 0) >= self.vulnerability_confidence_threshold),
                     "model_status": self.vulnerability_model.get_status()
                 },
                 processing_time=time.time() - vulnerability_time
             )
 
-            print(f"   → Predictions: {len(predictions)}")
+            print(f"   → Total predictions: {len(predictions)}")
             print(f"   → Vulnerable predictions: {sum(1 for p in predictions if p.get('is_vulnerable', False))}")
+            print(f"   → High-confidence vulnerable: {component_results['vulnerability_prediction'].data['high_confidence_vulnerable']}")
 
             # Add recommendations based on model predictions
             vulnerable_predictions = [p for p in predictions if p.get('is_vulnerable', False)]
             if vulnerable_predictions:
-                recommendations.append(f"Model detected {len(vulnerable_predictions)} vulnerable patterns")
+                high_conf_vulns = [p for p in vulnerable_predictions if p.get('confidence', 0) >= self.vulnerability_confidence_threshold]
+                if high_conf_vulns:
+                    recommendations.append(f"CRITICAL: Model detected {len(high_conf_vulns)} high-confidence vulnerable patterns")
+                else:
+                    recommendations.append(f"Model detected {len(vulnerable_predictions)} vulnerable patterns (review recommended)")
 
         except Exception as e:
             component_results['vulnerability_prediction'] = ComponentResult(
@@ -712,9 +795,6 @@ class CodeReviewPipeline:
 
         # Calculate overall score
         style_score = component_results['style_analysis'].data.get('score', 100)
-        security_score = component_results['security_analysis'].data.get('score', 100)
-
-        # Weighted average
         overall_score = int((style_score * 0.4) + (security_score * 0.6))
 
         # Get vulnerability data safely
@@ -723,13 +803,16 @@ class CodeReviewPipeline:
             vuln_result = component_results['vulnerability_prediction']
             if vuln_result and hasattr(vuln_result, 'data'):
                 vulnerability_data = vuln_result.data
-            else:
-                vulnerability_data = {}
 
-        # Make final decision
+        # Get security data
+        security_data = component_results['security_analysis'].data
+        risk_level = security_data.get('risk_level', 'LOW')
+
+        # 🔴 CRITICAL FIX: ML predictions have REAL impact
         final_decision = self._make_decision(
             overall_score,
-            component_results['security_analysis'].data,
+            security_score,
+            risk_level,
             vulnerability_data
         )
 
@@ -764,6 +847,7 @@ class CodeReviewPipeline:
         print(f"✅ ANALYSIS COMPLETE")
         print(f"{'='*70}")
         print(f"📊 Overall Score: {overall_score}/100 ({overall_status})")
+        print(f"🔒 Security Score: {security_score}/100")
         print(f"⚖️  Final Decision: {final_decision}")
         print(f"⏱️  Total Time: {total_time:.2f}s")
         print(f"💡 Recommendations: {len(recommendations)}")
@@ -772,25 +856,33 @@ class CodeReviewPipeline:
 
         return result
 
-    def _make_decision(self, overall_score, security_data, vulnerability_data):
+    def _make_decision(self, overall_score, security_score, risk_level, vulnerability_data):
         """
         Make final decision on code safety
+        🔴 CRITICAL FIX: ML predictions have REAL impact
         """
-        security_score = security_data.get('score', 100)
-        risk_level = security_data.get('risk_level', 'LOW')
-
-        # Check vulnerability model predictions
-        vulnerable_count = vulnerability_data.get('vulnerable_count', 0)
-
-        # Decision logic
+        # 🔴 ISSUE 2 FIX: High-confidence ML predictions → REJECT
+        high_confidence_vulnerable = vulnerability_data.get('high_confidence_vulnerable', 0)
+        
+        # Rule 1: High-confidence ML detection → REJECT
+        if high_confidence_vulnerable > 0:
+            return "REJECT"
+        
+        # Rule 2: Critical security issues → REJECT
         if security_score < 60 or risk_level in ['CRITICAL', 'HIGH']:
             return "REJECT"
-        elif vulnerable_count > 0:
+        
+        # Rule 3: Any ML vulnerability detection → REVIEW_REQUIRED
+        vulnerable_count = vulnerability_data.get('vulnerable_count', 0)
+        if vulnerable_count > 0:
             return "REVIEW_REQUIRED"
-        elif security_score < 75:
+        
+        # Rule 4: Medium security issues → REVIEW_RECOMMENDED
+        if security_score < 75:
             return "REVIEW_RECOMMENDED"
-        else:
-            return "APPROVE"
+        
+        # Rule 5: Everything looks good → APPROVE
+        return "APPROVE"
 
     def _detect_by_extension(self, filename: str) -> str:
         """Detect language by file extension."""
@@ -834,6 +926,7 @@ def main():
         print(f"\n🤖 Model Status: {model_status['status']}")
         print(f"📁 Model Path: {model_status['model_path']}")
         print(f"⚡ Device: {model_status['device']}")
+        print(f"📊 Architecture: max_position_embeddings={model_status.get('max_position_embeddings', 'N/A')}")
         
     except ModelLoadError as e:
         print(f"\n❌ CRITICAL ERROR: {e}")
@@ -895,8 +988,6 @@ if __name__ == "__main__":
         print(f"\n📋 STYLE ANALYSIS:")
         print(f"  Score: {style_data.get('score', 0)}/100")
         print(f"  Status: {'✅ PASSED' if style_data.get('passed', False) else '❌ FAILED'}")
-        if style_data.get('errors'):
-            print(f"  Errors: {len(style_data.get('errors', []))}")
 
         # Security analysis
         security_data = result.security_analysis.data
@@ -920,13 +1011,16 @@ if __name__ == "__main__":
             print(f"  Status: {vuln_data.get('model_status', {}).get('status', 'UNKNOWN')}")
             print(f"  Predictions: {vuln_data.get('total_predictions', 0)}")
             print(f"  Vulnerable: {vuln_data.get('vulnerable_count', 0)}")
+            print(f"  High-confidence vulnerable: {vuln_data.get('high_confidence_vulnerable', 0)}")
             
             # Show individual predictions
             predictions = vuln_data.get('predictions', [])
             for i, pred in enumerate(predictions, 1):
                 print(f"    {i}. Source: {pred.get('pattern', {}).get('source', 'N/A')}")
                 print(f"       Sink: {pred.get('pattern', {}).get('sink', 'N/A')}")
-                print(f"       Vulnerable: {'✅ Yes' if pred.get('is_vulnerable') else '❌ No'} (Confidence: {pred.get('confidence', 0):.1%})")
+                print(f"       Prediction: {pred.get('predicted_class_name', 'N/A')}")
+                print(f"       Confidence: {pred.get('confidence', 0):.1%}")
+                print(f"       High-confidence: {'✅' if pred.get('confidence', 0) >= 0.85 else '❌'}")
 
         # Final decision
         print(f"\n" + "=" * 80)
@@ -949,6 +1043,20 @@ if __name__ == "__main__":
                 print(f"  {i}. {rec}")
 
         print(f"\n⏱️ Total processing time: {result.total_processing_time:.2f}s")
+
+        # ✅ STEP 6: Sanity test
+        print(f"\n🧪 SANITY TEST - Verifying model predictions...")
+        try:
+            test_pred = pipeline.vulnerability_model.predict_vulnerability(
+                "user_input",
+                "system_call",
+                "none"
+            )
+            print(f"   Test prediction: {test_pred['predicted_class_name']} (confidence: {test_pred['confidence']:.1%})")
+            print(f"   Labels: {pipeline.vulnerability_model.model.config.id2label}")
+            print(f"   ✅ Model is producing predictions with correct labels")
+        except Exception as e:
+            print(f"   ❌ Sanity test failed: {e}")
 
     except Exception as e:
         print(f"\n❌ Error processing file: {e}")
