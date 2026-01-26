@@ -40,11 +40,10 @@ jobs:
           pip install huggingface_hub safetensors
 
       # --------------------------------------------------
-      # 4️⃣ Login to Hugging Face
-      # 🔒 Runs ONLY when secrets are available
+      # 4️⃣ Hugging Face Login (TRUSTED EVENTS ONLY)
       # --------------------------------------------------
       - name: 🔐 Login to Hugging Face
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
@@ -54,7 +53,7 @@ jobs:
 
           token = os.environ.get("HF_TOKEN")
           if not token:
-              raise RuntimeError("HF_TOKEN is missing")
+              raise RuntimeError("HF_TOKEN missing in trusted CI")
 
           login(token=token)
           print("✅ Hugging Face login successful")
@@ -63,7 +62,7 @@ jobs:
       # --------------------------------------------------
       # 5️⃣ Run integration tests
       # --------------------------------------------------
-      - name: 🧪 Run integration tests (CI Enforcement)
+      - name: 🧪 Run integration tests
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
