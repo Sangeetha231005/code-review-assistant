@@ -11,23 +11,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # --------------------------------------------------
+      # 1️⃣ Checkout repository
+      # --------------------------------------------------
       - name: 📥 Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # --------------------------------------------------
+      # 2️⃣ Setup Python
+      # --------------------------------------------------
       - name: 🐍 Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
+      # --------------------------------------------------
+      # 3️⃣ Install dependencies
+      # --------------------------------------------------
       - name: 📦 Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install torch transformers datasets scikit-learn pylint flake8 bandit
           pip install tree-sitter==0.20.4
           pip install tree-sitter-languages==1.10.2
+          pip install huggingface_hub safetensors
 
+      # --------------------------------------------------
+      # 4️⃣ Login to Hugging Face (USING SECRET TOKEN)
+      # --------------------------------------------------
+      - name: 🔐 Login to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<EOF
+          from huggingface_hub import login
+          login(token="${HF_TOKEN}")
+          EOF
+
+      # --------------------------------------------------
+      # 5️⃣ Run integration tests
+      # --------------------------------------------------
       - name: 🧪 Run integration tests (CI Enforcement)
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
           python test_integration.py --ci
+
+      # --------------------------------------------------
+      # 6️⃣ Analyze Pull Request code
+      # --------------------------------------------------
+      - name: 🔍 Analyze Pull Request Code
+        if: github.event_name == 'pull_request'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          python src/pr_analyze.py
