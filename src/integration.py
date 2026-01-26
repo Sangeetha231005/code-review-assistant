@@ -64,7 +64,15 @@ except ImportError as e:
 # ================== VULNERABILITY MODEL LOADER ==================
 
 class VulnerabilityModelLoader:
-    """Loads the fine-tuned vulnerability detection model"""
+    """
+    Loads vulnerability detection model
+    Priority:
+    1. Hugging Face Hub
+    2. Local downloaded model
+    """
+
+    HF_MODEL_ID = "Sangeetha23/codebert-vuln-logic"
+    LOCAL_MODEL_PATH = "models/vulnerability_logic_production"
 
     def __init__(self):
         self.model = None
@@ -73,39 +81,65 @@ class VulnerabilityModelLoader:
         self.load_model()
 
     def load_model(self):
-        """Load the trained vulnerability model"""
-        model_path = "/content/drive/MyDrive/code-review-assistant/models/vulnerability_logic_production"
+        # -------------------------------
+        # 1️⃣ Try Hugging Face first
+        # -------------------------------
+        try:
+            print(f"🌐 Loading vulnerability model from Hugging Face: {self.HF_MODEL_ID}")
 
-        if os.path.exists(model_path):
-            print(f"📦 Loading vulnerability model from: {model_path}")
+            self.tokenizer = RobertaTokenizer.from_pretrained(self.HF_MODEL_ID)
+            self.model = RobertaForSequenceClassification.from_pretrained(
+                self.HF_MODEL_ID,
+                ignore_mismatched_sizes=True
+            )
+
+            self.model.resize_token_embeddings(len(self.tokenizer))
+            self.model.to(self.device)
+            self.model.eval()
+
+            print(f"✅ Vulnerability model loaded from Hugging Face on {self.device}")
+            return
+
+        except Exception as hf_error:
+            print(f"⚠️ Hugging Face load failed: {hf_error}")
+
+        # -------------------------------
+        # 2️⃣ Fallback to local model
+        # -------------------------------
+        local_path = os.path.join(project_root, self.LOCAL_MODEL_PATH)
+        if os.path.exists(local_path):
             try:
-                self.tokenizer = RobertaTokenizer.from_pretrained(model_path)
+                print(f"📦 Loading vulnerability model from local path: {local_path}")
 
+                self.tokenizer = RobertaTokenizer.from_pretrained(local_path)
                 self.model = RobertaForSequenceClassification.from_pretrained(
-                    model_path,
-                    ignore_mismatched_sizes=True   # 🔥 REQUIRED
+                    local_path,
+                    ignore_mismatched_sizes=True
                 )
 
-                # 🔥 REQUIRED — resize embeddings to tokenizer size
                 self.model.resize_token_embeddings(len(self.tokenizer))
-
                 self.model.to(self.device)
                 self.model.eval()
-                print(f"✅ Vulnerability model loaded on {self.device}")
-            except Exception as e:
-                print(f"❌ Failed to load vulnerability model: {e}")
-                self.model = None
-        else:
-            print(f"⚠️ Vulnerability model not found at {model_path}")
-            print("Please train the model first using vulnerability_training.py")
-            self.model = None
+
+                print(f"✅ Vulnerability model loaded locally on {self.device}")
+                return
+
+            except Exception as local_error:
+                print(f"❌ Local model load failed: {local_error}")
+
+        # -------------------------------
+        # 3️⃣ Model unavailable
+        # -------------------------------
+        print("🚫 Vulnerability model NOT available (HF + local failed)")
+        self.model = None
+        self.tokenizer = None
 
     def predict_vulnerability(self, source, sink, sanitization):
         """
         Predict if a code pattern is vulnerable
         Uses the trained CodeBERT model
         """
-        if not self.model:
+        if not self.model or not self.tokenizer:
             return {"error": "Model not loaded", "is_vulnerable": False, "confidence": 0.0}
 
         # Format input as trained
