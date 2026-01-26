@@ -40,10 +40,16 @@ jobs:
           pip install huggingface_hub safetensors
 
       # --------------------------------------------------
-      # 4️⃣ Hugging Face Login (TRUSTED EVENTS ONLY)
+      # 4️⃣ Hugging Face Login (ONLY WHEN SAFE)
+      #     - Push to main/master ✅
+      #     - PR from same repo ✅
+      #     - Forked PR ❌ (skipped automatically)
       # --------------------------------------------------
       - name: 🔐 Login to Hugging Face
-        if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+        if: >
+          github.event_name == 'push' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name == github.repository)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
