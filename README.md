@@ -47,6 +47,28 @@ This project combines **static analysis**, **AUG-PDG (Augmented Program Dependen
 
 ---
 
+## 📂 Dataset
+
+The vulnerability detection model was trained using the **Devign Dataset**, a widely used benchmark dataset for software vulnerability detection research.
+
+### 🔗 Dataset Source
+
+- **Devign Dataset:** https://huggingface.co/datasets/DetectVul/devign
+
+### 📊 Dataset Overview
+
+| Property | Value |
+|-----------|---------|
+| Dataset | Devign |
+| Domain | Software Vulnerability Detection |
+| Source | Real-World Open-Source Projects |
+| Labels | Vulnerable / Non-Vulnerable |
+| Primary Language | C/C++ |
+| Task | Function-Level Vulnerability Classification |
+| Total Samples | 27,318 | | Dataset Size | 80.1 MB |
+
+---
+
 ## 🏗️ System Architecture
 <img width="1688" height="811" alt="image" src="https://github.com/user-attachments/assets/b35daed9-a915-4257-a280-fc46d7f27820" />
 
